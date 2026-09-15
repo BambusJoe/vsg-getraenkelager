@@ -781,7 +781,20 @@ document.getElementById('mebtn').addEventListener('click', chooseMe);
   DB.subscribe(refresh);
   setTimeout(() => { const s = $('#splash'); s.classList.add('hide'); setTimeout(()=>s.remove(), 600); }, 1250);
   if ('serviceWorker' in navigator){
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    window.addEventListener('load', () => {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // regelmäßig auf neue Version prüfen
+        reg.update && reg.update();
+        setInterval(() => { try { reg.update(); } catch(e){} }, 60 * 60 * 1000);
+      }).catch(()=>{});
+      // Wenn ein neuer SW die Kontrolle übernimmt: einmal neu laden -> frische Version
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || window.__vsgReloaded) return; // Erstinstallation überspringen
+        window.__vsgReloaded = true;
+        window.location.reload();
+      });
+    });
   }
 })();
 </script>
