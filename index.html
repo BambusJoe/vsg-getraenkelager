@@ -263,7 +263,7 @@ button{font:inherit; color:inherit}
 
 /* ---------- Bottom-Nav ---------- */
 .tabnav{display:flex; border-top:1px solid var(--line); background:color-mix(in oklab, var(--paper) 92%, transparent);
-  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:8px 8px calc(8px + env(safe-area-inset-bottom)); flex:none}
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); padding:8px 8px max(8px, env(safe-area-inset-bottom)); flex:none}
 .tabnav button{flex:1; border:0; background:transparent; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
   padding:5px 4px; color:var(--ink-3); position:relative; border-radius:12px; transition:color .15s}
 .tabnav button .ib{width:24px;height:24px; display:grid; place-items:center}
@@ -755,8 +755,18 @@ function toast(msg){
 }
 
 /* ============================================================ Boot */
-function setVH(){ document.documentElement.style.setProperty('--appvh', window.innerHeight + 'px'); }
-setVH(); window.addEventListener('resize', setVH);
+// iOS-Fix: App exakt auf die real sichtbare Höhe setzen -> kein Spalt am unteren Rand
+function setVH(){
+  var h = window.innerHeight;
+  var sh = (window.screen && screen.height) || 0;
+  // iOS-Standalone-Bug: innerHeight kann kleiner sein als der physische Screen -> dann physische Höhe nehmen
+  if (sh > h && (sh - h) <= 160) h = sh;
+  document.documentElement.style.setProperty('--appvh', h + 'px');
+}
+setVH();
+window.addEventListener('resize', setVH);
+window.addEventListener('orientationchange', () => setTimeout(setVH, 200));
+window.addEventListener('load', () => setTimeout(setVH, 600));
 
 document.getElementById('tabnav').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]'); if (b) switchTab(b.dataset.tab);
