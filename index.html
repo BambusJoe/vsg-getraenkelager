@@ -273,6 +273,7 @@ button{font:inherit; color:inherit}
 .tabnav button .nbadge{position:absolute; top:0; left:calc(50% + 7px); min-width:18px; height:18px; padding:0 4px; border-radius:9px;
   background:var(--bad-dot); color:#fff; font-size:11px; font-weight:800; font-family:var(--display); display:grid; place-items:center;
   border:2px solid var(--paper)}
+.tabnav button .nbadge[hidden]{display:none}
 
 /* ---------- Toast ---------- */
 .toast{position:absolute; left:50%; bottom:84px; transform:translate(-50%,20px); z-index:80; opacity:0; pointer-events:none;
@@ -735,7 +736,7 @@ function updateBadges(){
   const { buy } = summary();
   const badge = $('#tabbadge');
   if (buy.length){ badge.textContent = buy.length; badge.hidden = false; }
-  else badge.hidden = true;
+  else { badge.textContent = ''; badge.hidden = true; }
 }
 async function refresh(){
   const data = await DB.load();

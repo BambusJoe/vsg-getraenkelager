@@ -1,7 +1,7 @@
 /* VSG Getränkelager – Service Worker
    App-Shell wird gecacht, damit die App offline im Lager funktioniert.
    Cache-Version bei jedem Release erhöhen. */
-const CACHE = 'vsg-getraenke-v2';
+const CACHE = 'vsg-getraenke-v3';
 const SHELL = [
   './',
   './index.html',
