@@ -1,7 +1,7 @@
 /* VSG Getränkelager – Service Worker
    App-Shell wird gecacht, damit die App offline im Lager funktioniert.
    Cache-Version bei jedem Release erhöhen. */
-const CACHE = 'vsg-getraenke-v5';
+const CACHE = 'vsg-getraenke-v6';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   './icon-512.png',
   './apple-touch-icon.png',
   './wappen.png',
+  './supabase.js',
 ];
 
 self.addEventListener('install', (e) => {

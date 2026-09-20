@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="supabase.js"></script>
 <style>
 :root{
   --brand:#009FE3; --brand-deep:#0072AB; --brand-glow:#38C6FF; --brand-text:#0068A0;
@@ -401,7 +402,62 @@ const LocalDriver = {
     window.addEventListener('storage', (e) => { if (e.key === KEY) cb(); });
   },
 };
-const DB = LocalDriver;
+/* ============================================================ Supabase-Treiber
+   Gleiches Interface wie LocalDriver, aber gemeinsamer Cloud-Speicher (Live-Sync).
+   Fällt automatisch auf LocalDriver zurück, wenn Supabase nicht verfügbar ist. */
+const SUPABASE_URL = 'https://yknyypoeciwzopckvhfh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_oKX_PoKftFM3_kLJzaerEg_fsE5PVQ1';
+
+function makeSupabaseDriver(){
+  if (!SUPABASE_URL || !(window.supabase && window.supabase.createClient)) return null;
+  let client;
+  try { client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }
+  catch(e){ return null; }
+  const T = () => client.from('items');
+  const now = () => new Date().toISOString();
+  const toItem = (r) => ({ id:r.id, name:r.name, cat:r.cat, unit:r.unit, soll:r.soll, schwelle:r.schwelle, qty:r.qty, order:r.sort });
+  const seedRows = () => DEFAULTS.map((d,i) => ({ id: uid(), sort:i, updated_at: now(), updated_by:null, ...d }));
+  async function fetchAll(){
+    const { data, error } = await T().select('*').order('sort', { ascending:true });
+    if (error) throw error;
+    return data || [];
+  }
+  function metaFrom(rows){
+    let updatedAt = null, updatedBy = null;
+    rows.forEach(r => { const t = r.updated_at ? Date.parse(r.updated_at) : 0; if (t && t > (updatedAt||0)){ updatedAt = t; updatedBy = r.updated_by || null; } });
+    return { updatedAt, updatedBy };
+  }
+  return {
+    kind: 'supabase',
+    async load(){
+      let rows = await fetchAll();
+      if (!rows.length){ const seed = seedRows(); const { error } = await T().insert(seed); rows = error ? seed : await fetchAll(); }
+      return { items: rows.map(toItem), meta: metaFrom(rows) };
+    },
+    async setQty(id, qty, by){
+      await T().update({ qty: Math.max(0, qty), updated_at: now(), updated_by: by || null }).eq('id', id);
+    },
+    async upsert(item, by){
+      const id = item.id || uid();
+      const row = { id, name:item.name, cat:item.cat, unit:item.unit, soll:item.soll, schwelle:item.schwelle, qty:item.qty, updated_at: now(), updated_by: by || null };
+      Object.keys(row).forEach(k => row[k] === undefined && delete row[k]);
+      if (item.order != null) row.sort = item.order;   // nur bei neuen Sorten setzen; Edits lassen sort unangetastet
+      await T().upsert(row, { onConflict:'id' });
+    },
+    async remove(id){ await T().delete().eq('id', id); },
+    async resetDefaults(){ await T().delete().neq('id','___none___'); await T().insert(seedRows()); },
+    subscribe(cb){
+      try {
+        client.channel('items-changes')
+          .on('postgres_changes', { event:'*', schema:'public', table:'items' }, () => cb())
+          .subscribe();
+      } catch(e){}
+    },
+  };
+}
+
+const DB = makeSupabaseDriver() || LocalDriver;
+const SHARED = DB.kind === 'supabase';
 
 /* ============================================================ State */
 let state = { items: [], meta: {}, me: null, tab: 'lager' };
@@ -656,10 +712,10 @@ function renderVerwalten(){
 /* ============================================================ Actions */
 async function step(id, delta){
   const it = state.items.find(x => x.id === id); if (!it) return;
-  const q = Math.max(0, it.qty + delta);
-  it.qty = q; // optimistisch
-  await DB.setQty(id, q, state.me);
-  await refresh();
+  it.qty = Math.max(0, it.qty + delta);
+  state.meta = { updatedAt: Date.now(), updatedBy: state.me || state.meta.updatedBy };
+  updateBadges(); renderActive();                 // sofort lokal anzeigen (snappy)
+  try { await DB.setQty(it.id, it.qty, state.me); } catch(e){ console.warn('Speichern fehlgeschlagen', e); }
 }
 async function saveField(id, card){
   const it = state.items.find(x => x.id === id); if (!it) return;
@@ -673,7 +729,7 @@ async function saveField(id, card){
   await refresh();
 }
 async function addItem(){
-  await DB.upsert({ name:'Neue Sorte', cat:CATS[0], unit:'Kiste', soll:1, schwelle:0, qty:0 }, state.me);
+  await DB.upsert({ name:'Neue Sorte', cat:CATS[0], unit:'Kiste', soll:1, schwelle:0, qty:0, order: state.items.length }, state.me);
   await refresh();
   const cards = document.querySelectorAll('#view-verwalten .mgcard');
   const last = cards[cards.length-1];
@@ -741,11 +797,19 @@ function updateBadges(){
   else { badge.textContent = ''; badge.hidden = true; }
 }
 async function refresh(){
-  const data = await DB.load();
+  let data;
+  try { data = await DB.load(); }
+  catch(e){ console.warn('Laden fehlgeschlagen', e); return; }
   state.items = data.items || [];
   state.meta = data.meta || {};
   updateBadges();
   renderActive();
+}
+// Auslöser von außen (Realtime / Fokuswechsel): nicht neu rendern, während jemand in einem Feld tippt
+function externalRefresh(){
+  const a = document.activeElement;
+  if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+  refresh();
 }
 
 /* ============================================================ Toast */
@@ -780,7 +844,9 @@ document.getElementById('mebtn').addEventListener('click', chooseMe);
   try { const m = localStorage.getItem(ME_KEY); if (m) state.me = m; } catch(e){}
   renderMe();
   await refresh();
-  DB.subscribe(refresh);
+  DB.subscribe(externalRefresh);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) externalRefresh(); });
+  window.addEventListener('focus', externalRefresh);
   setTimeout(() => { const s = $('#splash'); s.classList.add('hide'); setTimeout(()=>s.remove(), 600); }, 1250);
   if ('serviceWorker' in navigator){
     window.addEventListener('load', () => {
