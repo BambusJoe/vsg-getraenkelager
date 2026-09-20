@@ -450,7 +450,8 @@ function grouped(){
 function summary(){
   const bad = state.items.filter(i => status(i)==='bad');
   const warn = state.items.filter(i => status(i)==='warn');
-  return { bad, warn, buy: [...bad, ...warn] };
+  // Einkaufsliste + Badge NUR aus "rot" (qty <= Nachkauf-ab). "gelb" bleibt reine Anzeige-Info.
+  return { bad, warn, buy: bad };
 }
 
 function renderLager(){
@@ -468,13 +469,13 @@ function renderLager(){
       chips: bad.map(i=>`<span class="vchip bad"><span class="cd"></span>${esc(i.name)}</span>`).join('') };
   } else if (warn.length){
     v = { cls:'warn', icon:'<path d="M12 8v4l2.5 1.5"/><circle cx="12" cy="12" r="9"/>',
-      h:'Bald nachkaufen', s:`${warn.length} ${warn.length===1?'Sorte wird':'Sorten werden'} knapp — beim nächsten Einkauf mitnehmen.`,
+      h:'Bestand reicht', s:`${warn.length} ${warn.length===1?'Sorte wird':'Sorten werden'} langsam knapp — noch nichts zu kaufen.`,
       chips: warn.map(i=>`<span class="vchip warn"><span class="cd"></span>${esc(i.name)}</span>`).join('') };
   } else {
     v = { cls:'ok', icon:'<path d="M20 6 9 17l-5-5"/>',
       h:'Alles aufgefüllt', s:'Der Bestand reicht für den nächsten Spieltag.', chips:'' };
   }
-  const showGo = (bad.length + warn.length) > 0;
+  const showGo = bad.length > 0;
 
   const groupsHtml = grouped().map(([cat, items]) => `
     <div class="sechead">
@@ -530,19 +531,20 @@ function renderEinkauf(){
   const el = $('#view-einkauf');
   const { buy, bad, warn } = summary();
   if (!buy.length){
+    const warnNote = warn.length
+      ? `<div class="mgsub" style="text-align:center; margin-top:16px">Wird langsam knapp (noch über der Nachkauf-Schwelle): ${warn.map(i=>esc(i.name)).join(', ')}.</div>`
+      : '';
     el.innerHTML = `
       <div class="pagehead"><h1>Einkaufsliste</h1></div>
       <div class="buyhead empty">
         <div class="bicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
         <div class="bt"><b>Nichts einzukaufen</b><span>Alle Sorten sind ausreichend bevorratet.</span></div>
-      </div>`;
+      </div>${warnNote}`;
     return;
   }
   const totalUnits = buy.reduce((s,i)=>s+need(i), 0);
-  const subParts = [];
-  if (bad.length) subParts.push(`${bad.length} nachkaufen`);
-  if (warn.length) subParts.push(`${warn.length} werden knapp`);
-  subParts.push(`${totalUnits} Gebinde bis Soll`);
+  const subParts = [`${totalUnits} Gebinde bis Soll`];
+  if (warn.length) subParts.push(`${warn.length} werden bald knapp`);
   const rows = buy.sort((a,b)=> (status(a)==='bad'?0:1)-(status(b)==='bad'?0:1)).map(it => {
     const st = status(it), n = need(it);
     return `<div class="buy" data-id="${it.id}">
@@ -551,7 +553,7 @@ function renderEinkauf(){
       </button>
       <div class="info">
         <div class="t">${esc(it.name)}</div>
-        <div class="s">${st==='bad'?'Leer / unter Mindestbestand':'Wird knapp'} · ${it.qty} von ${it.soll} da</div>
+        <div class="s">${it.qty===0?'Leer':'Nachkauf fällig'} · ${it.qty} von ${it.soll} da</div>
       </div>
       <div class="need">+${n} <small>${esc(plural(it.unit, n))}</small></div>
     </div>`;
@@ -561,7 +563,7 @@ function renderEinkauf(){
     <div class="pagehead"><h1>Einkaufsliste</h1></div>
     <div class="buyhead has">
       <div class="bn">${buy.length}</div>
-      <div class="bt"><b>${buy.length===1?'Sorte':'Sorten'} unter Soll</b><span>${subParts.join(' · ')}</span></div>
+      <div class="bt"><b>${buy.length===1?'Sorte':'Sorten'} nachkaufen</b><span>${subParts.join(' · ')}</span></div>
     </div>
     <div class="list" style="margin-top:6px">${rows}</div>
     <div class="actions">
@@ -695,10 +697,10 @@ async function completeBought(){
   toast(`${ids.length} ${ids.length===1?'Sorte':'Sorten'} aufgefüllt`);
 }
 async function shareList(){
-  const { buy, bad } = summary();
-  const lines = buy.sort((a,b)=> (status(a)==='bad'?0:1)-(status(b)==='bad'?0:1))
-    .map(i => `• ${i.name}: +${need(i)} ${plural(i.unit, need(i))}${status(i)==='bad'?' (leer)':''}`);
-  const text = `🏐 VSG Getränke-Einkauf\n${new Date().toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}\n\n${lines.join('\n')}\n\n(${buy.length} Sorten, ${bad.length} leer)`;
+  const { buy } = summary();
+  const leer = buy.filter(i => i.qty === 0).length;
+  const lines = buy.map(i => `• ${i.name}: +${need(i)} ${plural(i.unit, need(i))}${i.qty===0?' (leer)':''}`);
+  const text = `🏐 VSG Getränke-Einkauf\n${new Date().toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}\n\n${lines.join('\n')}\n\n(${buy.length} ${buy.length===1?'Sorte':'Sorten'}${leer?`, ${leer} leer`:''})`;
   try {
     if (navigator.share){ await navigator.share({ title:'VSG Getränke-Einkauf', text }); return; }
   } catch(e){ if (e && e.name === 'AbortError') return; }
