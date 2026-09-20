@@ -306,10 +306,6 @@ button{font:inherit; color:inherit}
     <div class="topbar">
       <div class="crest"><img src="icon-192.png" alt=""></div>
       <div class="brand"><b>Getränkelager</b><span>VSG Kleinsteinbach</span></div>
-      <button class="mebtn tap" id="mebtn" aria-label="Team wählen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
-        <span class="who"><small>Team</small><b id="mename">—</b></span>
-      </button>
     </div>
 
     <div class="scroll" id="scroll">
@@ -350,10 +346,8 @@ button{font:inherit; color:inherit}
               remove(id); setMeta(patch); subscribe(cb)
    ============================================================ */
 const KEY = 'vsg.getraenke.v1';
-const ME_KEY = 'vsg.getraenke.me';
 
 const CATS = ['Wasser', 'Softdrinks', 'Bier & Radler'];
-const TEAMS = ['Herren I', 'Herren II', 'Damen I', 'Damen II', 'Mixed', 'Jugend'];
 
 const DEFAULTS = [
   { name:'Wasser still',        cat:'Wasser',        unit:'Sixpack', soll:4, schwelle:1, qty:4 },
@@ -564,7 +558,7 @@ function renderLager(){
   el.innerHTML = `
     <div class="pagehead">
       <h1>Lagerbestand</h1>
-      <div class="meta"><span class="now"></span>Aktualisiert ${relTime(state.meta.updatedAt)}${state.meta.updatedBy?` · ${esc(state.meta.updatedBy)}`:''}</div>
+      <div class="meta"><span class="now"></span>Aktualisiert ${relTime(state.meta.updatedAt)}</div>
     </div>
     <div class="verdict ${v.cls}">
       <div class="vhead">
@@ -764,18 +758,6 @@ async function shareList(){
   catch(e){ prompt('Einkaufsliste kopieren:', text); }
 }
 
-/* ============================================================ Team / Me */
-function renderMe(){ $('#mename').textContent = state.me || 'wählen'; }
-function chooseMe(){
-  const cur = state.me || '';
-  const list = TEAMS.join(', ');
-  const val = prompt(`Für welches Team trägst du ein?\n\nVorschläge: ${list}`, cur);
-  if (val === null) return;
-  state.me = val.trim() || null;
-  try { localStorage.setItem(ME_KEY, state.me || ''); } catch(e){}
-  renderMe(); toast(state.me ? `Team: ${state.me}` : 'Team entfernt');
-}
-
 /* ============================================================ Tabs / Refresh */
 function switchTab(tab){
   state.tab = tab;
@@ -838,11 +820,8 @@ window.addEventListener('load', () => setTimeout(setVH, 600));
 document.getElementById('tabnav').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]'); if (b) switchTab(b.dataset.tab);
 });
-document.getElementById('mebtn').addEventListener('click', chooseMe);
 
 (async function init(){
-  try { const m = localStorage.getItem(ME_KEY); if (m) state.me = m; } catch(e){}
-  renderMe();
   await refresh();
   DB.subscribe(externalRefresh);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) externalRefresh(); });
